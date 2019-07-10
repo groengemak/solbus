@@ -46,6 +46,7 @@ a Rasperry Pi or Pyboard.  You should be happy to use USB for your laptop,
 to monitor and debug the traffic flow.
 
 Tools also exist, and we will document a few open source variants here.
+PyModbus is a nice library that can be used from within Python.
 
 
 ## Simple Usage Pattern
@@ -58,12 +59,12 @@ SolBus is a Python library whose main program looks like a configuration file:
 from groengemak import solbus
 
 # Create a bus interface for Modbus over RS-485 at /dev/ttyUSB0
-bus = solbus.Modbus (solbus.RS485 ('/dev/ttyUSB0', baud=9600))
+bus = solbus.modbus.RS485 ('/dev/ttyUSB0', baud=9600)
 
 # Device 15 on this bus drives relays/coils to operate our boiler
 boiler_coils = solbus.Coils (bus, 15, { 'heatpump':2, 'shower':3 })
-boiler_coils.heatpump = 0
-boiler_coils.shower = 0
+boiler_coils ['heatpump'] = 0
+boiler_coils ['shower'] = 0
 
 # Device 15 also receives temperature measurements
 boiler_temps = solbus.Inputs (bus, 15, { 'bottemp':10001, 'toptemp':10002 })
@@ -71,7 +72,7 @@ boiler_temps = solbus.Inputs (bus, 15, { 'bottemp':10001, 'toptemp':10002 })
 # Create a rule that drives the temperature to 55 degrees Centigrade
 range55bot = solbus.rule.Range (boiler_temps.bottemp, high=54)
 range55top = solbus.rule.Range (boiler_temps.toptemp, high=54)
-range55bad  = solbus.rule.Or (range55bot, range55top)
+range55bad = solbus.rule.Or (range55bot, range55top)
 bus.cause (range55bad, boiler_coils.heatpump)
 
 # Device 13 detects if the shower is running
@@ -87,6 +88,14 @@ bus.run_forever ()
 
 The purpose of the SolBus package is to supply the classes that enable
 this kind of scripting, and connect it to a Modbus run over RS-485.
+
+
+## Scripting together Events and Procedures
+
+Alternatively, a language can be used to trigger events when
+certain polling events take place, and procedures can be
+started to respond to those.  This is close to programming,
+and may make more sense.
 
 
 ## Running your Controller

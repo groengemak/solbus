@@ -13,13 +13,6 @@ class Solbus (object):
 	   which introduces data to poll and to write.  It is
 	   the purpose of the Solbus to interact with these
 	   devices and to schedule their consumption patterns.
-	   
-	   Devices will be added with a set of modes, for which
-	   a few standard names exist:
-	   
-	     * "off"  is switched off by automation,
-	     * "on"   is switched on  by automation,
-	     * "man"  is manually overridden.
 	"""
 
 	def __init__ (self, name, gridname='home'):
@@ -84,16 +77,6 @@ class Solbus (object):
 				print ('Exception while polling %s on bus %s:\n%s' % (devnm, self.name, exc))
 			#TODO# Process changes
 			self.vals = newvals
-
-	def run_forever (self):
-		"""Run the polling of the bus in a thread-blocking
-		   infinite loop.
-		"""
-		while True:
-			#TODO# Mention polling starts on syslog
-			self.poll ()
-			#TODO# Mention polling ends on syslog
-			time.sleep (self.wait)
 
 
 class Soldev (object):
@@ -197,6 +180,20 @@ class Grid (object):
 		assert (solbus.grid == self)
 		self.list.append (solbus)
 
+	def run_forever (self):
+		"""Run the polling of the Grid by polling each Solbus
+		   in turn, using a thread-blocking infinite loop.
+		   It is expected that calls to manage power and claims
+		   are made from the poll method of each Solbus.
+		"""
+		while True:
+			for solbus in self.list:
+				#TODO# Mention polling starts on syslog
+				solbus.poll ()
+				#TODO# Mention polling ends on syslog
+			#TODO# Better to do something periodic instead
+			time.sleep (self.wait)
+
 	def balance_power (self, wattlist):
 		"""Add the balance of power for a given number of seconds
 		   or 5 minutes otherwise.  Generated solar energie is
@@ -232,10 +229,10 @@ class Grid (object):
 		"""
 		raise NotImplementedError ("claim_power")
 
-	def retract_claim (self, claim):
+	def claim_retract (self, claim):
 		"""Retract a power claim after it returned True from
 		   a call to claim_power.  It may be recalculated and
 		   cycle back into the system.
 		"""
-		raise NotImplementedError ("retract_claim")
+		raise NotImplementedError ("claim_retract")
 

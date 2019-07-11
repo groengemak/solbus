@@ -1,8 +1,11 @@
 # groengemak -> solbus.modbus
 #
-# Modbus over interfaces like RS-485.
+# Modbus is a form of Solbus; RS-485 is a physical layer for Modbus.
 #
 # From: Rick van Rein <rick@groengemak.nl>
+
+
+from groengemak import solbus
 
 
 chr8 = chr
@@ -16,15 +19,15 @@ def ord16 (cc):
 	return ord (cc [0]) + (ord (cc [1]) << 8)
 
 
-class Modbus:
+class Modbus (solbus.Solbus):
 	"""The generic Modbus class implements functions for
 	   driving coils and reading coils, switches and
 	   inputs.  The sendmsg and recvmsg methods should be
 	   overridden in a subclass.
 	"""
 
-	def __init__ (self, name):
-		self.name = name
+	def __init__ (self, name, polling_interval=300):
+		solbus.Solbus.__init__ (self, name, polling_interval=polling_interval)
 
 	def sendmsg (self, slave, function, data):
 		"""Subclasses should override sendmsg so it
@@ -122,12 +125,12 @@ class RS485 (Modbus):
 	   coils and to look at switches and inputs.
 	"""
 
-	def __init__ (self, serdev, name=None, baud=9600, ascii=False):
-		Modbus.__init__ (self, name or serdev)
+	#TODO# Depend on pyserial, specifically the RS485 support
+
+	def __init__ (self, pyserial_dev, name=None, ascii=False):
+		Modbus.__init__ (self, name or pyserial_dev.name)
 		assert (ascii == False)
-		serio = open (serdev, 'rw')
-		self.serio = serio
-		#TODO# set baud rate
+		self.serio = pyserial_dev
 
 	def close (self):
 		self.serio.close ()
@@ -166,10 +169,41 @@ class RS485 (Modbus):
 		   slave and function are prefixed, and the checksum is
 		   appended.
 		"""
-		#TODO# Use timeout, and know how much to expect
-		msg = self.serio.read (1 + 1 + datasz + 2)
-		assert (msg [0] == chr8 (slave))
-		assert (msg [1] == chr8 (function))
-		assert (self._crc (msg [:-2]) == msg [-2:])
-		return msg [2:-2]
+		#TODO# Process errors (function += 128, 1 byte errorcode)
+		self.serio.timeout = timeout
+		msg = self.serio.read (2)
+		exc = None
+		if msg [0] != chr8 (slave):
+			exc = Exception ('Modbus from/to slave %02x, expected from %02x' % (ord (msg [0]), slave))
+		elif msg [1] != chr8 (function):
+			if msg [1] != chr8 (function + 128):
+				exc = Exception ('Modbus function %02x, expected %02x' % (ord (msg [1]), function))
+			else:
+				errorcode = ord (self.serio.read (1))
+				errormap = {
+					1: 'Illegal function',
+					2: 'Illegal data address',
+					3: 'Illegal data value',
+					4: 'Slave device failure',
+					5: 'Acknowledge',
+					6: 'Slave device busy',
+					7: 'Negative acknowledge',
+					8: 'Memory parity error',
+					10: 'Gateway path unavailable',
+					11: 'Gateway target device failed to respond'
+				}
+				exc = Exception ('Modbus error %02x: %s' % (errorcode, errormap.get (errorcode, 'Non-standard failure')))
+		else:
+			msg = self.serio.read (datasz)
+			if len (msg) != datasz:
+				exc = Exception ('Modbus got %d bytes, expected %d' % (len (msg), datasz))
+			else:
+				crc = self.serio.read (2)
+				if self._crc (msg) != crc:
+					exc = Exception ('Modbus CRC wrong')
+		if exc:
+			self.serio.reset_input_buffer ()
+			raise exc
+		else:
+			return msg
 

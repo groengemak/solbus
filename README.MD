@@ -110,3 +110,42 @@ platforms.  However, to respect even those, we might opt for an export
 option that would produce code for a compiler such as SDCC to implement
 this protocol on top of a basic read/write API for a serial port.
 
+
+## Benefits from Related Work
+
+When running Modbus over RS-485, we need to lock out other applications
+using the same interface.  This may not be ideal.  For instance, one
+might imagine an
+[arpa2shell](https://github.com/arpa2/arpa2shell)
+for Modbus, perhaps named `arpa2modbus`,
+that interacts on the devices over a commandline or JSON messaging.
+It would be a great use of single sign-on to be able to turn lights
+on or off through a publicly addressable service and not have to notice
+the tight security woven by the ARPA2 ACL mechanism.
+
+To allow such secondary interfaces to RS-485, the Modbus TCP solution
+is better suited.  It can multiplex requests by serialising them, and
+it also simplifies the protocol in other ways.  The result is a Modbus
+interface that can welcome more than one simultaneous client, as long
+as they are somewhat patient.  A nice intermediate to handle the
+mapping from Modbus TCP to Modbus RS-485 is
+[mbusd](https://github.com/3cky/mbusd)
+which is small enough to also run on a minimalistic system.
+It would not work on single-process systems, but then, those are
+served well enough with direct access to RS-485 over a UART.
+
+The heaviest power users are sensibly addressed with relays and some
+timing constraints, but smaller ones may be nice to add once this
+coarse level is working well.  This may involve the addition of other
+methods of addressing devices.  Many of those are on the market, and
+they are all incompatible.  Leave it to the open souce world to pull
+them all together.  I started a
+[discussion with pilight](https://forum.pilight.org/showthread.php?tid=3564&pid=24430#pid24430)
+about this, and though
+[pilight](https://www.pilight.org)
+does not seem to be pleasant for this kind of explorative coding,
+it certainly has a few nice properties, notably its minimalism,
+that makes it tractable and attractive as either a gateway to
+these other market mechanisms, or even as a future container of the
+logic developed here.  (And this is how I closed the forum
+discussion for the time being, by deferring it with interest.)

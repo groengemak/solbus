@@ -125,10 +125,10 @@ class RS485 (Modbus):
 	   coils and to look at switches and inputs.
 	"""
 
-	#TODO# Depend on pyserial, specifically the RS485 support
-
 	def __init__ (self, pyserial_dev, name=None, ascii=False):
-		Modbus.__init__ (self, name or pyserial_dev.name)
+		if name is None:
+			name = pyserial_dev.name
+		Modbus.__init__ (self, name)
 		assert (ascii == False)
 		self.serio = pyserial_dev
 
@@ -203,6 +203,92 @@ class RS485 (Modbus):
 					exc = Exception ('Modbus CRC wrong')
 		if exc:
 			self.serio.reset_input_buffer ()
+			raise exc
+		else:
+			return msg
+
+class TCP (Modbus):
+	"""The Modbus class that runs the protocol over TCP.
+	   Unlike the RS485 class, multiple instances of this
+	   class may interface with the same TCP server:port
+	   pair, which will then be multiplexed.
+	   
+	   There are basic sendmsg and recvmsg methods, but the
+	   superclass Modbus defines generic methods that may
+	   be more useful, and can be used to drive and read
+	   coils and to look at switches and inputs.
+	"""
+
+	def __init__ (self, tcp_connection, name=None, ascii=False):
+		if name is None:
+			name = str (tcp_connection.getpeername ())
+		Modbus.__init__ (self, name)
+		assert (ascii == False)
+		self.cnxio = tcp_connection
+		self.txnid = 0
+
+	def close (self):
+		self.cnxio.close ()
+		self.cnxio = None
+
+	def sendmsg (self, slave, function, data):
+		"""Elementary message send routine.  Used internally
+		   as part of higher-level functions.  We prefix the
+		   function, as well as the MBAP header with txnid,
+		   protoid, length and put the slave in the unitID.
+		   The return value is the new txnid, to be claimed
+		   by recvmsg or otherwise the last value is used.
+		"""
+		self.txnid += 1
+		txnid = self.txnid % 65536
+		msg = chr8 (slave) + chr8 (function) + data
+		msg = chr16 (txnid) + chr16 (0) + chr16 (len (msg)) + msg
+		self.cnxio.write (msg)
+		return txnid
+
+	def recvmsg (self, slave, function, datasz, timeout=5, txnid=None):
+		"""Elementary message receive routine.  Used internally
+		   as part of higher-level functions.  We check that the
+		   MBAP header and function are prefixed.  We assume that
+		   the sendmsg/recvmsg flow happens in lockstep, so we
+		   reuse the txnid from the last message.  If a number of
+		   messages were sent then received, the txnid may be set
+		   to the older value than the most recent.
+		"""
+		if tnxid is None:
+			txnid = self.txnid % 65536
+		msg = self.cnxio.read (8)
+		assert  (ord16 (msg [0:2]) <= self.txnid)
+		assert  (ord16 (msg [2:4]) == 0)
+		datasz = ord16 (msg [4:6]) - 1
+		assert (size < 256)
+		exc = None
+		if msg [6] != chr8 (slave):
+			exc = Exception ('Modbus from/to slave %02x, expected from %02x' % (ord (msg [6]), slave))
+		elif msg [7] != chr8 (function):
+			if msg [7] != chr8 (function + 128):
+				exc = Exception ('Modbus function %02x, expected %02x' % (ord (msg [7]), function))
+			else:
+				#TODO# Shared data and code
+				errorcode = ord (self.cnxio.read (1))
+				errormap = {
+					1: 'Illegal function',
+					2: 'Illegal data address',
+					3: 'Illegal data value',
+					4: 'Slave device failure',
+					5: 'Acknowledge',
+					6: 'Slave device busy',
+					7: 'Negative acknowledge',
+					8: 'Memory parity error',
+					10: 'Gateway path unavailable',
+					11: 'Gateway target device failed to respond'
+				}
+				exc = Exception ('Modbus error %02x: %s' % (errorcode, errormap.get (errorcode, 'Non-standard failure')))
+		else:
+			msg = self.cnxio.read (datasz)
+			if len (msg) != datasz:
+				exc = Exception ('Modbus got %d bytes, expected %d' % (len (msg), datasz))
+		if exc:
 			raise exc
 		else:
 			return msg
